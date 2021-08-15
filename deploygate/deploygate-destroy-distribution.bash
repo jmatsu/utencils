@@ -66,13 +66,7 @@ die() {
 }
 
 parse_params() {
-  app_owner_name=''
-  file_path=''
-  disable_ios_notification=''
   distribution_key=''
-  distribution_name=''
-  message=''
-  public=''
   output_path=''
   _DEPLOYGATE_API_TOKEN_="${DEPLOYGATE_API_TOKEN-}"
 
@@ -81,26 +75,8 @@ parse_params() {
     -h | --help) usage ;;
     -v | --verbose) _VERBOSE_=1 ;;
     --no-color) NO_COLOR=1 ;;
-    --disable[-_]ios[-_]notification) disable_ios_notification=1 ;;
-    --public) public=1 ;;
-    --app[-_]owner)
-      app_owner_name="${2-}"
-      shift
-      ;;
-    --distribution[-_]key)
+    -k | --key)
       distribution_key="${2-}"
-      shift
-      ;;
-    --distribution[-_]name)
-      distribution_name="${2-}"
-      shift
-      ;;
-    -f | --file)
-      file_path="${2-}"
-      shift
-      ;;
-    -m | --message)
-      message="${2-}"
       shift
       ;;
     -o | --output)
@@ -118,8 +94,7 @@ parse_params() {
   done
 
   [[ -z "${_DEPLOYGATE_API_TOKEN_-}" ]] && die "Missing required parameter: -t or --token"
-  [[ -z "${app_owner_name}" ]] && die "Missing required parameter: --app-owner"
-  [[ -z "${file_path}" ]] && die "Missing required parameter: --file"
+  [[ -z "${distribution_key-}" ]] && die "Missing required parameter: --key"
 
   return 0
 }
@@ -130,52 +105,17 @@ setup_colors
 
 # script logic here
 
-resolve_path() {
-  pushd . >/dev/null 2>&1
-
-  if \cd "$(dirname "$1")" >/dev/null 2>&1; then
-    printf "%s/%s" "$(pwd)" "$(basename "$1")"
-  else
-    die "could not resolve $1"
-  fi
-
-  popd >/dev/null 2>&1
-}
-
-upload() {
-  local -r app_owner_name="$1" app_file="$(resolve_path "$2")" mesasge="$3" public="$4" disable_ios_notification="$5" save_to="${6-}"
-
-  if [[ ! -f "${app_file}" ]]; then
-    die "${app_file} is not found"
-  fi
+destroy_distribution() {
+  local -r distribution_key="$1" save_to="${2-}"
 
   local curl_options=('-sSfL')
 
   curl_options+=('-A' 'jmatsu/utencils')
   curl_options+=('-H' 'Accept: application/json')
   curl_options+=('-H' "Authorization: token ${_DEPLOYGATE_API_TOKEN_}")
-  curl_options+=('-F' "file=@${app_file}")
 
   if [[ -n "${_VERBOSE_}" ]]; then
     curl_options+=('-v')
-  fi
-
-  if [[ -n "${mesasge}" ]]; then
-    curl_options+=('-F' "message=${message}")
-  fi
-
-  if [[ -n "${public}" ]]; then
-    curl_options+=('-F' "visibility=public")
-  fi
-
-  if [[ -n "${disable_ios_notification}" ]]; then
-    curl_options+=('-F' "disable_notify=true")
-  fi
-
-  if [[ -n "${distribution_key}" ]]; then
-    curl_options+=('-F' "distribution_key=${distribution_key}")
-  elif [[ -n "${distribution_name}" ]]; then
-    curl_options+=('-F' "distribution_name=${distribution_name}")
   fi
 
   if [[ -n "${save_to}" ]]; then
@@ -184,8 +124,8 @@ upload() {
 
   curl \
     "${curl_options[@]}" \
-    -X POST \
-    --url "https://deploygate.com/api/users/$app_owner_name/apps"
+    -X DELETE \
+    --url "https://deploygate.com/api/distributions/${distribution_key}"
 }
 
-upload "${app_owner_name}" "${file_path}" "${message}" "${public}" "${disable_ios_notification}" "${output_path}"
+destroy_distribution "${distribution_key}" "${save_to}"

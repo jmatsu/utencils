@@ -65,16 +65,15 @@ die() {
 }
 
 curl() {
-  local curl_options=()
+  local curl_options=('-sSfL')
 
-  curl_options+=('-H' 'Content-Type: application/json')
-  curl_options+=('-H' "Circle-Token: ${token}")
+  curl_options+=('-H' "Circle-Token: ${_CIRCLECI_TOKEN_}")
 
-  if [[ -n "${verbose}" ]]; then
+  if [[ -n "${_VERBOSE_}" ]]; then
     curl_options+=('-v')
   fi
 
-  command curl -sSfL "${curl_options[@]}" "$@"
+  command curl "${curl_options[@]}" "$@"
 }
 
 parse_params() {
@@ -83,13 +82,14 @@ parse_params() {
   job_number=''
   output_path=''
   slug=''
-  token=''
-  verbose=''
+
+  _CIRCLECI_TOKEN_="${CIRCLECI_TOKEN-}"
+  _VERBOSE_=''
 
   while :; do
     case "${1-}" in
     -h | --help) usage ;;
-    -v | --verbose) set -x ;;
+    -v | --verbose) _VERBOSE_=1 ;;
     --no-color) NO_COLOR=1 ;;
     -e | --exclude)
       exclude_pattern="${2-}"
@@ -112,7 +112,7 @@ parse_params() {
       shift
       ;;
     -t | --token)
-      token="${2-}"
+      _CIRCLECI_TOKEN_="${2-}"
       shift
       ;;
     -?*) die "Unknown option: $1" ;;
@@ -121,7 +121,7 @@ parse_params() {
     shift
   done
 
-  [[ -z "${token-}" ]] && die "Missing required parameter: -t or --token"
+  [[ -z "${_CIRCLECI_TOKEN_-}" ]] && die "Missing required parameter: -t or --token"
   [[ -z "${slug-}" ]] && die "Missing required parameter: --slug"
   [[ -z "${job_number}" ]] && die "Missing required parameter: --job-number"
   [[ -z "${output_path}" ]] && die "Missing required parameter: --output"
@@ -138,7 +138,10 @@ setup_colors
 list_artifacts() {
   local -r slug="$1" job_number="$2"
 
-  local curl_options=('-H' 'Accept: application/json')
+  local curl_options=()
+
+  curl_options+=('-H' 'Accept: application/json')
+  curl_options+=('-H' 'Content-Type: application/json')
 
   curl \
     "${curl_options[@]}" \
@@ -169,7 +172,11 @@ download_artifact() {
 
   mkdir -p "$(dirname "${save_to}")"
 
-  local curl_options=('-o' "${save_to}" '-H' 'Accept: application/octet-stream')
+  local curl_options=()
+
+  curl_options+=('-o' "${save_to}")
+  curl_options+=('-H' 'Accept: application/octet-stream')
+  curl_options+=('-H' 'Content-Type: application/json')
 
   curl \
     "${curl_options[@]}" \
@@ -179,11 +186,14 @@ download_artifact() {
 
 download_artifacts_of_a_job() {
   local -r job_number="$1" output_dir_path="$2" include_pattern="$3" exclude_pattern="$4"
-  local path='' url=''
+  local artifact_json='' path='' url=''
 
-  while read path url; do
+  while IFS= read -r artifact_json; do
+    path="$(echo "${artifact_json}" | jq -r '.path')"
+    url="$(echo "${artifact_json}" | jq -r '.url')"
+
     download_artifact "${url}" "${output_dir_path}" "${path}" "${include_pattern}" "${exclude_pattern}"
-  done < <(list_artifacts "${slug}" "${job_number}" | jq -r '.items[] | .path + " " + .url')
+  done < <(list_artifacts "${slug}" "${job_number}" | jq -c '.items[]')
 }
 
 download_artifacts_of_a_job "${slug}" "${job_number}" "${output_path}" "${include_pattern}" "${exclude_pattern}"

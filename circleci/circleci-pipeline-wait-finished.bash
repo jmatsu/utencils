@@ -60,42 +60,35 @@ die() {
   exit "${2-1}"
 }
 
+curl() {
+  local curl_options=('-sSfL')
+
+  curl_options+=('-H' "Circle-Token: ${_CIRCLECI_TOKEN_}")
+
+  if [[ -n "${_VERBOSE_}" ]]; then
+    curl_options+=('-v')
+  fi
+
+  command curl "${curl_options[@]}" "$@"
+}
+
 parse_params() {
-  branch=''
-  file=''
-  output_path='/dev/stdout'
   pipeline_id=''
-  slug=''
-  token=''
-  verbose=''
+
+  _CIRCLECI_TOKEN_="${CIRCLECI_TOKEN-}"
+  _VERBOSE_=''
 
   while :; do
     case "${1-}" in
     -h | --help) usage ;;
-    -v | --verbose) verbose=1 ;;
+    -v | --verbose) _VERBOSE_=1 ;;
     --no-color) NO_COLOR=1 ;;
-    -b | --branch)
-      branch="${2-}"
-      shift
-      ;;
-    -f | --file)
-      file="${2-}"
-      shift
-      ;;
-    -o | --output)
-      output_path="${2-}"
-      shift
-      ;;
     --pipeline[-_]id)
       pipeline_id="${2-}"
       shift
       ;;
-    -s | --slug)
-      slug="${2-}"
-      shift
-      ;;
     -t | --token)
-      token="${2-}"
+      _CIRCLECI_TOKEN_="${2-}"
       shift
       ;;
     -?*) die "Unknown option: $1" ;;
@@ -105,7 +98,7 @@ parse_params() {
     shift
   done
 
-  [[ -z "${token-}" ]] && die "Missing required parameter: -t or --token"
+  [[ -z "${_CIRCLECI_TOKEN_-}" ]] && die "Missing required parameter: -t or --token"
   [[ -z "${pipeline_id-}" ]] && die "Missing required parameter: --pipeline-id"
 
   return 0
@@ -118,15 +111,10 @@ setup_colors
 show_workflows() {
   local -r pipeline_id="$1"
 
-  local curl_options=('-sSfL')
+  local curl_options=()
 
   curl_options+=('-H' 'Content-Type: application/json')
   curl_options+=('-H' 'Accept: application/json')
-  curl_options+=('-H' "Circle-Token: ${token}")
-
-  if [[ -n "${verbose}" ]]; then
-    curl_options+=('-v')
-  fi
 
   curl \
     -X GET \
@@ -135,29 +123,43 @@ show_workflows() {
 
 wait_pipeline() {
   local -r pipeline_id="$1"
-  local -r save_to="${OUTPUT_DIR}/wait_pipeline.json"
-  local status=
+  local workflow_json='' workflow_name='' workflow_id='' workflow_status='' wait_more=''
 
   while :; do
-    status="$(show_workflows "${pipeline_id}" | jq -r '.items[].status' | sort | uniq)"
+    wait_more=''
 
-    case "$status" in
-      success)
-        info "The workflow has successfully finished."
-        break
-        ;;
-      *canceled*)
-        die 'The workflow has been canceled.'
-        ;;
-      *failed*)
-        die 'The workflow unexpectedly failed'
-        ;;
-      *)
-        warn "Waiting for the completion of ${pipeline_id} but got [${status}]. Retry in 30 seconds."
-        sleep 30
-        ;;
-    esac
+    while IFS= read -r workflow_json; do
+      workflow_id="$(echo "${workflow_json}" | jq -r '.id')"
+      workflow_name="$(echo "${workflow_json}" | jq -r '.name')"
+      workflow_status="$(echo "${workflow_json}" | jq -r '.status')"
+
+      case "$workflow_status" in
+        success)
+          info "'${workflow_name}' (${workflow_id}) has successfully finished."
+          break
+          ;;
+        canceled)
+          die "'${workflow_name}' (${workflow_id}) has been canceled"
+          ;;
+        failed)
+          die "'${workflow_name}' (${workflow_id}) unexpectedly failed"
+          ;;
+        *)
+          warn "Waiting for the completion of '${workflow_name}' (${workflow_id}) but got ${workflow_status}."
+          wait_more=1
+          ;;
+      esac
+    done < <(show_workflows "${pipeline_id}" | jq -c '.items[]')
+
+    if [[ -z "${wait_more}" ]]; then
+      break
+    fi
+
+    warn "Retry in 30 seconds."
+    sleep 30
   done
+
+  info "All workflows in ${pipeline_id} have successfully finished."
 
   return 0
 }
