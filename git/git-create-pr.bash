@@ -10,7 +10,7 @@ usage() {
 Usage:
 
   git create-pr -h
-  git create-pr --token <token> --base <base branch> --head <head branch> [--force] [--title <title>] [--body-file <path>]
+  git create-pr --token <token> --slug <username/repo> --base <base branch> --head <head branch> [--force] [--title <title>] [--body-file <path>]
 
 A command returns a default branch name of the specific remote.
 
@@ -21,6 +21,7 @@ Available options:
 --head            A head branch
 --with-force-push Force to push the head branch if specified
 --title           A PR title
+--slug            A GitHub slug. e.g. jmatsu/utencils
 --body-file       A file path that contains PR description
 --with-push       Push the head branch before creating a PR. Just push only unless --force option is specified.
 EOF
@@ -79,9 +80,10 @@ curl() {
 parse_params() {
   base_branch='master'
   body_file=''
-  head_branch=''
+  head_branch="$(git rev-parse --abbrev-ref HEAD)"
   force=''
   pr_title=''
+  slug=''
   with_push=''
 
   _DRAFT_=''
@@ -133,6 +135,16 @@ parse_params() {
   [[ -z "${_GITHUB_TOKEN_-}" ]] && die "Missing required parameter: --token"
   [[ -z "${base_branch-}" ]] && die "Missing required parameter: --base"
   [[ -z "${head_branch-}" ]] && die "Missing required parameter: --head"
+  [[ -z "${pr_title-}" ]] && die "Missing required parameter: --title"
+
+  if [[ -z "${slug-}" ]]; then
+    warn '--slug is unspecified. Guess it from the remote URL'
+    slug="$(git remote get-url origin | sed -e 's/^.*github.com\/\(.*\)$/\1/' -e 's/\.git$//')"
+  fi
+
+  if [[ -n "${body_file}" ]] && [[ ! -f "${body_file}" ]]; then
+    die "${body_file} is not found."
+  fi
 
   return 0
 }
@@ -142,11 +154,11 @@ parse_params "$@"
 setup_colors
 
 create_pr() {
-  local -r slug="$1" base_branch="$2" head_branch="$3" title="$4" body_file="$5"
+  local -r slug="$1" base_branch="$2" head_branch="$3" title="$4" body_file="${5:-${OUTPUT_DIR}/body_file.json}"
   local -r request_file="${OUTPUT_DIR}/request_body.json"
 
   if [[ ! -f "${body_file}" ]]; then
-    echo > "${body_file}"
+    echo -n > "${body_file}"
   fi
 
   jq -cn \
