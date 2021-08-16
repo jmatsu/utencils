@@ -22,6 +22,7 @@ Available options:
 -f, --force     Force to push the head branch if specified
 --title         A PR title
 --body-file     A file path that contains PR description
+--with-push     Push the head branch before creating a PR. Just push only unless --force option is specified.
 EOF
   exit
 }
@@ -81,6 +82,7 @@ parse_params() {
   head_branch=''
   force=''
   pr_title=''
+  with_push=''
 
   _DRAFT_=''
   _GITHUB_TOKEN_="${GITHUB_TOKEN-}"
@@ -92,7 +94,10 @@ parse_params() {
     -v | --verbose) _VERBOSE_=1 ;;
     --no-color) NO_COLOR=1 ;;
     -d | --draft) _DRAFT_=true ;;
-    -f | --force) force=1 ;;
+    -f | --force)
+      force=1
+      with_push=1
+      ;;
     --base)
       base_branch="${2-}"
       shift
@@ -115,6 +120,10 @@ parse_params() {
       ;;
     --title)
       pr_title="${2-}"
+      shift
+      ;;
+    --with[-_]push)
+      with_push=1
       shift
       ;;
     -?*) die "Unknown option: $1" ;;
@@ -165,10 +174,12 @@ create_pr() {
     "https://api.github.com/repos/${slug}/pulls"
 }
 
-if [[ -n "${force}" ]]; then
-  git push origin "${head_branch}" -f
-else
-  git push origin "${head_branch}"
+if [[ -n "${with_push}" ]]; then
+  if [[ -n "${force}" ]]; then
+    git push origin "${head_branch}" -f
+  else
+    git push origin "${head_branch}"
+  fi
 fi
 
 create_pr "${slug}" "${base_branch}" "${head_branch}" "${pr_title}" "${body_file}"
