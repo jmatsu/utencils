@@ -57,7 +57,7 @@ die() {
 }
 
 parse_params() {
-  remote=''
+  remote='origin'
 
   while :; do
     case "${1-}" in
@@ -67,7 +67,6 @@ parse_params() {
       remote="${2-}"
       shift
       ;;
-      ;;
     -?*) die "Unknown option: $1" ;;
     *) break ;;
     esac
@@ -75,10 +74,7 @@ parse_params() {
     shift
   done
 
-  if [[ -z "${remote}" ]]; then
-    warn "--remote is not specified so origin will be used by default."
-    remote='origin'
-  fi
+  [[ -z "${remote-}" ]] && die "Missing required parameter: --remote"
 
   return 0
 }
