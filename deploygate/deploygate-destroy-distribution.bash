@@ -9,21 +9,17 @@ usage() {
   cat <<EOF
 Usage:
   
-  deploygate-app-upload -h
-  deploygate-app-upload [-v] --app-owner <name> --file <path> [--message <message>] [--public] [--disable-ios-notification] [--output <path>]
+  deploygate-destroy-distribution -h
+  deploygate-destroy-distribution [-v] --token <token> --key <key> [--output <path>]
 
 Upload the given app to DeployGate
 
 Options:
--h, --help                  Print this help and exit
--v, --verbose               Print script debug info
--t, --token                 An API Token
---app-owner                 An app owner name (either user name or group name)
--f, --file                  A file path to application to upload
--m, --message               A short message linked to the revision
---public                    Use public visibility (only for free users)
---disable-ios-notification  Disable notifications (only for ios apps)
--o, --output                A file path to save the raw response
+-h, --help    Print this help and exit
+-v, --verbose Print script debug info
+-t, --token   An API Token
+-k, --key     A key of a distribution to destroy
+-o, --output  A file path to save the raw response
 EOF
   exit
 }
